@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import formidable, { File } from "formidable";
+import  { File } from "formidable";
 import { PostModel } from "../models/postModel";
 import { UserModel } from "../models/userModel";
 import cloudinary from "cloudinary";
 import dotenv from "dotenv";
 import { DecodedToken } from "../types/userInterface";
+import { ExtendedRequest } from "../types/postInterface";
 
 dotenv.config();
 
@@ -15,9 +16,7 @@ cloudinary.v2.config({
   api_secret: process.env.CLOUD_APISECRET,
 });
 
-interface ExtendedRequest extends Request {
-  files?: any;
-}
+
 export const createPost = async (
   req: ExtendedRequest,
   res: Response
@@ -25,28 +24,27 @@ export const createPost = async (
   try {
     const token = req.headers.authorization?.split(" ")[1];
     console.log(token);
-    
+
     if (!token) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
     const decoded = jwt.decode(token) as DecodedToken;
     console.log(decoded);
-    
+
     req.body.userId = decoded.id;
     console.log(req.body.userId);
-    
+
     const user = await UserModel.findById(decoded.id);
     if (!user) {
       res.status(404).json({ message: "User not found" });
       return;
     }
     req.body.username = user.username;
-console.log(req.files.img);
+    console.log(req.files.img);
 
     const images = req.files;
     console.log(`images ${images}`);
-    
 
     if (images) {
       const imageUrls = await Promise.all(
@@ -55,13 +53,11 @@ console.log(req.files.img);
         )
       );
       console.log(`imageurl ${imageUrls}`);
-      
-      req.body.img = imageUrls.map(
-        (imageUrl) => imageUrl.secure_url
-      );
+
+      req.body.img = imageUrls.map((imageUrl) => imageUrl.secure_url);
     }
 
-    const newPost = new PostModel(req.body)
+    const newPost = new PostModel(req.body);
 
     const savedPost = await newPost.save();
 
@@ -75,11 +71,22 @@ console.log(req.files.img);
   }
 };
 
-
-export const getAllPosts = async (req: Request, res: Response): Promise<void> => {
+export const getAllPosts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    // Fetch posts from the database and sort them by creation date (newest first)
-    const posts = await PostModel.find().sort({ createdAt: -1 });
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 8;
+
+    const skip = (page - 1) * limit;
+
+    const posts = await PostModel.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalPosts = await PostModel.countDocuments();
 
     if (posts.length === 0) {
       res.status(404).json({ message: "No posts found" });
@@ -89,6 +96,9 @@ export const getAllPosts = async (req: Request, res: Response): Promise<void> =>
     res.status(200).json({
       message: "Posts fetched successfully",
       posts,
+      totalPosts,
+      totalPages: Math.ceil(totalPosts / limit),
+      currentPage: page,
     });
   } catch (error) {
     console.error("Error fetching posts:", error);
@@ -100,23 +110,7 @@ export const editPost = async (
   res: Response
 ): Promise<void> => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
-    }
-
-    const decoded = jwt.decode(token) as DecodedToken;
-    if (!decoded?.id) {
-      res.status(401).json({ message: "Invalid token" });
-      return;
-    }
-
-    const user = await UserModel.findById(decoded.id);
-    if (!user) {
-      res.status(404).json({ message: "User  not found" });
-      return;
-    }
+   const decoded=req.currentUser
 
     const postId = req.params.selectedPostId;
     const post = await PostModel.findById(postId);
@@ -125,19 +119,23 @@ export const editPost = async (
       return;
     }
 
-    if (post.userId.toString() !== decoded.id) {
+    if (post.userId.toString() !== decoded?.id) {
       res.status(403).json({ message: "Forbidden: Cannot edit this post" });
       return;
     }
 
     const { title, content } = req.body;
     console.log(req.body.title);
-    
-    let img = post.img; 
+
+    let img = post.img;
     if (req.files?.img) {
-      const images = Array.isArray(req.files.img) ? req.files.img : [req.files.img];
+      const images = Array.isArray(req.files.img)
+        ? req.files.img
+        : [req.files.img];
       const uploadedImages = await Promise.all(
-        images.map((image: File) => cloudinary.v2.uploader.upload(image.filepath))
+        images.map((image: File) =>
+          cloudinary.v2.uploader.upload(image.filepath)
+        )
       );
       img = uploadedImages.map((image) => image.secure_url);
     }
@@ -163,26 +161,11 @@ export const editPost = async (
   }
 };
 
-export const deletePost = async (req: ExtendedRequest, res: Response): Promise<void> => {
+export const deletePost = async (
+  req: ExtendedRequest,
+  res: Response
+): Promise<void> => {
   try {
-    // const token = req.headers.authorization?.split(" ")[1];
-    // if (!token) {
-    //   res.status(401).json({ message: "Unauthorized" });
-    //   return;
-    // }
-
-    // const decoded = jwt.decode(token) as DecodedToken;
-    // if (!decoded?.id) {
-    //   res.status(401).json({ message: "Invalid token" });
-    //   return;
-    // }
-
-    // const user = await UserModel.findById(decoded.id);
-    // if (!user) {
-    //   res.status(404).json({ message: "User not found" });
-    //   return;
-    // }
-
     const postId = req.params.selectedPostId;
     const post = await PostModel.findById(postId);
     if (!post) {
@@ -190,24 +173,15 @@ export const deletePost = async (req: ExtendedRequest, res: Response): Promise<v
       return;
     }
 
-    // // Check if the user is the author of the post
-    // if (post.userId.toString() !== decoded.id) {
-    //   res.status(403).json({ message: "Forbidden: You are not allowed to delete this post" });
-    //   return;
-    // }
-
-    // If the post has an image, delete it from Cloudinary
     if (post.img && post.img.length > 0) {
-      // Cloudinary image deletion - Assuming post.img contains an array of image URLs
       for (const imageUrl of post.img) {
-        const publicId = imageUrl.split("/").pop()?.split(".")[0]; // Extract publicId from URL
+        const publicId = imageUrl.split("/").pop()?.split(".")[0];
         if (publicId) {
-          await cloudinary.v2.uploader.destroy(publicId); // Delete image from Cloudinary
+          await cloudinary.v2.uploader.destroy(publicId);
         }
       }
     }
 
-    // Delete the post from the database
     await PostModel.findByIdAndDelete(postId);
 
     res.status(200).json({

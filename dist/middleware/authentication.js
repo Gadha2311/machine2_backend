@@ -17,7 +17,8 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const userModel_1 = require("../models/userModel");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-const secretKey = process.env.JWT_SECRETKEY;
+const secretKey = process.env.JWTSECRET;
+console.log(secretKey);
 const authenticateToken = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const token = (_a = req.headers.authorization) === null || _a === void 0 ? void 0 : _a.split(" ")[1];
@@ -26,7 +27,7 @@ const authenticateToken = (req, res, next) => __awaiter(void 0, void 0, void 0, 
         return res.status(401).json("Token not provided");
     }
     try {
-        const decoded = jsonwebtoken_1.default.verify(token, "secretkey123");
+        const decoded = jsonwebtoken_1.default.verify(token, secretKey);
         req.currentUser = { id: decoded.id };
         const user = yield userModel_1.UserModel.findById(decoded.id);
         console.log("authenticated");

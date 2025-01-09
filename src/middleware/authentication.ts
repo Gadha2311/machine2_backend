@@ -6,7 +6,9 @@ import dotenv from "dotenv";
 dotenv.config();
 import { DecodedToken, CustomRequest } from "../types/userInterface";
 
-const secretKey: any = process.env.JWT_SECRETKEY;
+const secretKey: any = process.env.JWTSECRET;
+console.log(secretKey);
+
 
 export const authenticateToken: any = async (
   req: CustomRequest,
@@ -21,7 +23,7 @@ export const authenticateToken: any = async (
     return res.status(401).json("Token not provided");
   }
   try {
-    const decoded = jwt.verify(token, "secretkey123") as DecodedToken;
+    const decoded = jwt.verify(token,secretKey) as DecodedToken;
     req.currentUser = { id: decoded.id };
     const user = await UserModel.findById(decoded.id);
     console.log("authenticated");

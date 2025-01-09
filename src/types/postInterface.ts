@@ -2,7 +2,11 @@ import { Request } from "express";
 import { Files } from "formidable";
 
 export interface ExtendedRequest extends Request {
-  files: any;
+  currentUser?: {
+    id: string;
+    name: string;
+  };
+  files?: any;
 }
 
 export interface IPost extends Document {
@@ -13,3 +17,5 @@ export interface IPost extends Document {
   img?: string[];
   createdAt: Date;
 }
+
+

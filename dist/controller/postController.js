@@ -66,8 +66,14 @@ const createPost = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 exports.createPost = createPost;
 const getAllPosts = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        // Fetch posts from the database and sort them by creation date (newest first)
-        const posts = yield postModel_1.PostModel.find().sort({ createdAt: -1 });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 8;
+        const skip = (page - 1) * limit;
+        const posts = yield postModel_1.PostModel.find()
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+        const totalPosts = yield postModel_1.PostModel.countDocuments();
         if (posts.length === 0) {
             res.status(404).json({ message: "No posts found" });
             return;
@@ -75,6 +81,9 @@ const getAllPosts = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         res.status(200).json({
             message: "Posts fetched successfully",
             posts,
+            totalPosts,
+            totalPages: Math.ceil(totalPosts / limit),
+            currentPage: page,
         });
     }
     catch (error) {
@@ -84,38 +93,26 @@ const getAllPosts = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
 });
 exports.getAllPosts = getAllPosts;
 const editPost = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
+    var _a;
     try {
-        const token = (_a = req.headers.authorization) === null || _a === void 0 ? void 0 : _a.split(" ")[1];
-        if (!token) {
-            res.status(401).json({ message: "Unauthorized" });
-            return;
-        }
-        const decoded = jsonwebtoken_1.default.decode(token);
-        if (!(decoded === null || decoded === void 0 ? void 0 : decoded.id)) {
-            res.status(401).json({ message: "Invalid token" });
-            return;
-        }
-        const user = yield userModel_1.UserModel.findById(decoded.id);
-        if (!user) {
-            res.status(404).json({ message: "User  not found" });
-            return;
-        }
+        const decoded = req.currentUser;
         const postId = req.params.selectedPostId;
         const post = yield postModel_1.PostModel.findById(postId);
         if (!post) {
             res.status(404).json({ message: "Post not found" });
             return;
         }
-        if (post.userId.toString() !== decoded.id) {
+        if (post.userId.toString() !== (decoded === null || decoded === void 0 ? void 0 : decoded.id)) {
             res.status(403).json({ message: "Forbidden: Cannot edit this post" });
             return;
         }
         const { title, content } = req.body;
         console.log(req.body.title);
         let img = post.img;
-        if ((_b = req.files) === null || _b === void 0 ? void 0 : _b.img) {
-            const images = Array.isArray(req.files.img) ? req.files.img : [req.files.img];
+        if ((_a = req.files) === null || _a === void 0 ? void 0 : _a.img) {
+            const images = Array.isArray(req.files.img)
+                ? req.files.img
+                : [req.files.img];
             const uploadedImages = yield Promise.all(images.map((image) => cloudinary_1.default.v2.uploader.upload(image.filepath)));
             img = uploadedImages.map((image) => image.secure_url);
         }
@@ -139,43 +136,20 @@ exports.editPost = editPost;
 const deletePost = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        // const token = req.headers.authorization?.split(" ")[1];
-        // if (!token) {
-        //   res.status(401).json({ message: "Unauthorized" });
-        //   return;
-        // }
-        // const decoded = jwt.decode(token) as DecodedToken;
-        // if (!decoded?.id) {
-        //   res.status(401).json({ message: "Invalid token" });
-        //   return;
-        // }
-        // const user = await UserModel.findById(decoded.id);
-        // if (!user) {
-        //   res.status(404).json({ message: "User not found" });
-        //   return;
-        // }
         const postId = req.params.selectedPostId;
         const post = yield postModel_1.PostModel.findById(postId);
         if (!post) {
             res.status(404).json({ message: "Post not found" });
             return;
         }
-        // // Check if the user is the author of the post
-        // if (post.userId.toString() !== decoded.id) {
-        //   res.status(403).json({ message: "Forbidden: You are not allowed to delete this post" });
-        //   return;
-        // }
-        // If the post has an image, delete it from Cloudinary
         if (post.img && post.img.length > 0) {
-            // Cloudinary image deletion - Assuming post.img contains an array of image URLs
             for (const imageUrl of post.img) {
-                const publicId = (_a = imageUrl.split("/").pop()) === null || _a === void 0 ? void 0 : _a.split(".")[0]; // Extract publicId from URL
+                const publicId = (_a = imageUrl.split("/").pop()) === null || _a === void 0 ? void 0 : _a.split(".")[0];
                 if (publicId) {
-                    yield cloudinary_1.default.v2.uploader.destroy(publicId); // Delete image from Cloudinary
+                    yield cloudinary_1.default.v2.uploader.destroy(publicId);
                 }
             }
         }
-        // Delete the post from the database
         yield postModel_1.PostModel.findByIdAndDelete(postId);
         res.status(200).json({
             message: "Post deleted successfully",
